@@ -831,6 +831,17 @@
     }
   }
 
+  // ================================================================
+  // Detail/PR view (stub for now - will be fully implemented in commit 11)
+  // ================================================================
+  let detailOverlay = null;
+  let detailPollTimer = null;
+
+  // Build detail overlay (stub)
+  function buildDetailOverlay() {
+    // Placeholder - full implementation in commit 12
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => activate());
   } else {
