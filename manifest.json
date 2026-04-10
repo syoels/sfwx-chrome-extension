@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GitDisguise",
-  "version": "1.0.0",
+  "version": "4.0.0",
   "description": "Makes Twitter/X look like a GitHub commit history",
   "permissions": ["activeTab", "storage"],
   "icons": {
