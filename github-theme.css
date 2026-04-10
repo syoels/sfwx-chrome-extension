@@ -1,0 +1,67 @@
+/* ============================================================
+   GitDisguise — GitHub Dark Theme CSS (Overlay Architecture)
+
+   This CSS only styles OUR overlay elements.
+   No Twitter overrides needed — Twitter is simply hidden.
+   ============================================================ */
+
+:root {
+  --gh-bg: #0d1117;
+  --gh-bg-secondary: #161b22;
+  --gh-border: #30363d;
+  --gh-text: #e6edf3;
+  --gh-text-muted: #7d8590;
+  --gh-text-link: #58a6ff;
+  --gh-green: #3fb950;
+  --gh-green-muted: #238636;
+  --gh-header-bg: #010409;
+  --gh-btn-bg: #21262d;
+  --gh-btn-border: #363b42;
+  --gh-hover-bg: #161b22;
+  --gh-white: #f0f6fc;
+  --gh-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --gh-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* =========================================================
+   1. HIDE TWITTER — one rule to rule them all
+   ========================================================= */
+/* Keep Twitter in the document flow so its scroll/virtualization works,
+   but make it invisible and non-interactive beneath our overlay. */
+body.gitdisguise-active #react-root {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.gitdisguise-active {
+  background-color: var(--gh-bg) !important;
+}
+
+/* =========================================================
+   2. OVERLAY ROOT
+   ========================================================= */
+#gh-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 2147483647; /* max z-index — above everything */
+  background-color: var(--gh-bg);
+  color: var(--gh-text);
+  font-family: var(--gh-font);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#gh-overlay *, #gh-overlay *::before, #gh-overlay *::after {
+  box-sizing: border-box;
+}
+
+#gh-overlay a {
+  color: var(--gh-text-link);
+  text-decoration: none;
+}
+
+/* Scrollbar */
+#gh-overlay::-webkit-scrollbar { width: 8px; background: var(--gh-bg); }
+#gh-overlay::-webkit-scrollbar-thumb { background: var(--gh-border); border-radius: 4px; }
