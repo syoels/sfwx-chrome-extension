@@ -160,6 +160,51 @@
   };
 
   // ================================================================
+  // Toast notification (singleton — each new toast cancels the prev)
+  // ================================================================
+  let activeToast = null;
+  let activeToastTimeout = null;
+
+  function showToast(message) {
+    // Cancel any existing toast
+    if (activeToast) {
+      clearTimeout(activeToastTimeout);
+      activeToast.remove();
+      activeToast = null;
+    }
+
+    const container = overlay?.querySelector(".gh-toast-container");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = "gh-toast";
+    toast.textContent = message;
+    container.appendChild(toast);
+    activeToast = toast;
+
+    // Trigger entry animation on next frame
+    requestAnimationFrame(() => {
+      toast.classList.add("gh-toast-visible");
+    });
+
+    // After 3s, animate out
+    activeToastTimeout = setTimeout(() => {
+      toast.classList.remove("gh-toast-visible");
+      toast.classList.add("gh-toast-exit");
+      // Remove from DOM after exit animation
+      toast.addEventListener("transitionend", () => {
+        toast.remove();
+        if (activeToast === toast) activeToast = null;
+      }, { once: true });
+      // Fallback removal
+      setTimeout(() => {
+        if (toast.parentNode) toast.remove();
+        if (activeToast === toast) activeToast = null;
+      }, 500);
+    }, 3000);
+  }
+
+  // ================================================================
   // Data extraction from hidden Twitter DOM
   // ================================================================
   const seenTweetIds = new Set(); // track which tweets we've already extracted
@@ -248,59 +293,12 @@
   }
 
   // ================================================================
-  // Global state
+  // Overlay DOM construction
   // ================================================================
   let overlay = null;
   let commitListEl = null;
   let lastRenderedDateGroup = null;
-  let isActive = false;
-  let currentMode = "feed"; // "feed" or "detail"
-  let pollTimer = null;
 
-  // ================================================================
-  // Message listener
-  // ================================================================
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "toggle") {
-      isActive ? deactivate() : activate();
-      sendResponse({ active: isActive });
-    } else if (message.action === "getStatus") {
-      sendResponse({ active: isActive });
-    }
-    return true;
-  });
-
-  function activate() {
-    isActive = true;
-    document.body.classList.add("gitdisguise-active");
-    chrome.storage.local.set({ gitDisguiseActive: true });
-    loadSettings().then(() => {
-      disguiseUrl();
-      buildOverlay();
-    });
-  }
-
-  function deactivate() {
-    isActive = false;
-    document.body.classList.remove("gitdisguise-active");
-    chrome.storage.local.set({ gitDisguiseActive: false });
-
-    // Restore original URL
-    restoreUrl();
-
-    // Remove overlays
-    if (overlay) { overlay.remove(); overlay = null; }
-    commitListEl = null;
-    lastRenderedDateGroup = null;
-    currentMode = "feed";
-
-    // Stop polling
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  }
-
-  // ================================================================
-  // Overlay DOM construction
-  // ================================================================
   function buildOverlay() {
     overlay = document.createElement("div");
     overlay.id = "gh-overlay";
@@ -820,6 +818,8 @@
   // ================================================================
   // Main poll loop: extract new tweets, render them
   // ================================================================
+  let pollTimer = null;
+
   function poll() {
     try {
       const newTweets = extractTweetsFromDOM();
@@ -832,15 +832,553 @@
   }
 
   // ================================================================
-  // Detail/PR view (stub for now - will be fully implemented in commit 11)
+  // URL detection: are we on a single tweet/status page?
+  // ================================================================
+  function isStatusPage() {
+    // Matches x.com/username/status/1234... or twitter.com/username/status/1234...
+    return /^\/[^/]+\/status\/\d+/.test(location.pathname);
+  }
+
+  // Extract the main (OP) tweet from a status page DOM
+  // Returns a promise that resolves once the main tweet is available
+  function extractMainTweetFromDOM() {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const maxAttempts = 30; // 30 * 500ms = 15s max wait
+
+      function tryExtract() {
+        const articles = document.querySelectorAll('article[data-testid="tweet"]');
+        if (articles.length > 0) {
+          const article = articles[0]; // first article is the main tweet
+          const tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+          const text = tweetTextEl ? tweetTextEl.textContent.trim() : "";
+          const timeEl = article.querySelector("time");
+          const datetime = timeEl ? timeEl.getAttribute("datetime") : null;
+
+          const userNameEl = article.querySelector('[data-testid="User-Name"]');
+          let authorName = "developer";
+          let authorHandle = "dev";
+          if (userNameEl) {
+            const nameLink = userNameEl.querySelector("a");
+            if (nameLink) {
+              const spans = nameLink.querySelectorAll("span");
+              if (spans.length > 0) authorName = spans[0].textContent.trim();
+              const href = nameLink.getAttribute("href");
+              if (href) authorHandle = href.replace(/^\//, "");
+            }
+          }
+
+          const avatarImg = article.querySelector('[data-testid="Tweet-User-Avatar"] img');
+          const avatarUrl = avatarImg ? avatarImg.src : null;
+
+          resolve({
+            text: text || "Update dependencies",
+            authorName,
+            authorHandle,
+            avatarUrl,
+            datetime,
+            hash: generateHash(text + location.pathname),
+            tweetUrl: location.href,
+            mediaUrls: [],
+          });
+          return;
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(tryExtract, 500);
+        } else {
+          // Fallback: couldn't find the tweet, use URL info
+          resolve({
+            text: "View commit",
+            authorName: "developer",
+            authorHandle: "dev",
+            avatarUrl: null,
+            datetime: null,
+            hash: generateHash(location.pathname),
+            tweetUrl: location.href,
+            mediaUrls: [],
+          });
+        }
+      }
+
+      tryExtract();
+    });
+  }
+
+  // ================================================================
+  // Commit Detail Page (PR Conversation Overlay)
   // ================================================================
   let detailOverlay = null;
   let detailPollTimer = null;
+  const seenReplyIds = new Set();
 
-  // Build detail overlay (stub)
-  function buildDetailOverlay() {
-    // Placeholder - full implementation in commit 12
+  function extractRepliesFromDOM() {
+    const replies = [];
+    const articles = document.querySelectorAll('article[data-testid="tweet"]');
+    // First article is usually the main tweet — skip it
+    let isFirst = true;
+    for (const article of articles) {
+      if (isFirst) { isFirst = false; continue; }
+
+      const tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+      const text = tweetTextEl ? tweetTextEl.textContent.trim() : "";
+      const timeEl = article.querySelector("time");
+      const datetime = timeEl ? timeEl.getAttribute("datetime") : null;
+
+      const stableKey = "r|" + text.substring(0, 80) + "|" + (datetime || "");
+      if (seenReplyIds.has(stableKey)) continue;
+      seenReplyIds.add(stableKey);
+
+      const userNameEl = article.querySelector('[data-testid="User-Name"]');
+      let authorName = "contributor";
+      let authorHandle = "dev";
+      if (userNameEl) {
+        const nameLink = userNameEl.querySelector("a");
+        if (nameLink) {
+          const spans = nameLink.querySelectorAll("span");
+          if (spans.length > 0) authorName = spans[0].textContent.trim();
+          const href = nameLink.getAttribute("href");
+          if (href) authorHandle = href.replace(/^\//, "");
+        }
+      }
+
+      const avatarImg = article.querySelector('[data-testid="Tweet-User-Avatar"] img');
+      const avatarUrl = avatarImg ? avatarImg.src : null;
+
+      // Extract media (same logic as feed extraction)
+      const replyMedia = [];
+      const hasVid = !!article.querySelector('[data-testid="videoPlayer"]');
+      if (!hasVid) {
+        article.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
+          const src = img.src;
+          if (src && !src.startsWith("data:") && !src.includes("emoji")) {
+            replyMedia.push({ type: "image", src });
+          }
+        });
+      }
+      if (hasVid) {
+        const videoEl = article.querySelector('[data-testid="videoPlayer"] video');
+        const poster = videoEl?.getAttribute("poster");
+        const thumbImg = article.querySelector('[data-testid="videoPlayer"] img');
+        const thumbSrc = poster || thumbImg?.src;
+        if (thumbSrc && !thumbSrc.startsWith("data:")) {
+          replyMedia.push({ type: "image", src: thumbSrc });
+        }
+      }
+
+      replies.push({ stableKey, text, authorName, authorHandle, avatarUrl, datetime, mediaUrls: replyMedia });
+    }
+    return replies;
   }
+
+  // ================================================================
+  // Buzzword branch name generator
+  // ================================================================
+  const BRANCH_PREFIXES = ["feat", "fix", "refactor", "chore", "hotfix", "perf", "ci", "build", "migrate", "spike"];
+  const BRANCH_BUZZWORDS = [
+    "kubernetes-ingress", "graphql-federation", "redis-cache-layer", "terraform-modules",
+    "websocket-gateway", "oauth2-pkce-flow", "docker-compose-v2", "grpc-streaming",
+    "elasticsearch-reindex", "kafka-consumer-groups", "prometheus-alerts", "nginx-rate-limiting",
+    "mongodb-sharding", "rabbitmq-dead-letter", "lambda-cold-starts", "cloudflare-workers",
+    "postgres-partitioning", "s3-lifecycle-rules", "datadog-apm-traces", "vault-secret-rotation",
+    "istio-service-mesh", "argo-cd-rollouts", "pulumi-stack-refs", "dbt-incremental-models",
+    "spark-delta-lake", "airflow-dag-dependencies", "snowflake-materialized-views",
+    "react-server-components", "nextjs-middleware", "prisma-migrations", "trpc-procedures",
+    "zod-validation-schemas", "tailwind-design-tokens", "storybook-interaction-tests",
+    "playwright-e2e-suite", "webpack-module-federation", "turborepo-cache-artifacts",
+    "sentry-performance-monitoring", "opentelemetry-spans", "jwt-refresh-rotation",
+    "stripe-webhook-idempotency", "algolia-faceted-search", "supabase-row-level-security",
+    "vercel-edge-functions", "rust-wasm-bindings", "go-generics-refactor",
+  ];
+
+  function generateBranchName(seed) {
+    const prefix = BRANCH_PREFIXES[Math.abs(seed) % BRANCH_PREFIXES.length];
+    const buzz = BRANCH_BUZZWORDS[Math.abs(seed * 7 + 3) % BRANCH_BUZZWORDS.length];
+    return `${prefix}/${buzz}`;
+  }
+
+  // ================================================================
+  // Emoji reaction helpers
+  // ================================================================
+  const REACTION_EMOJIS = ["👍", "👎", "😄", "🎉", "😕", "❤️", "🚀", "👀"];
+
+  function generateReactions(seed) {
+    // ~10% chance of having reactions (rare)
+    if (seededRandom(seed * 31) > 0.1) return "";
+    const count = Math.floor(seededRandom(seed * 41) * 3) + 1;
+    let html = '<div class="gh-reactions">';
+    const used = new Set();
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(seededRandom(seed * 53 + i * 17) * REACTION_EMOJIS.length);
+      if (used.has(idx)) continue;
+      used.add(idx);
+      const num = Math.floor(seededRandom(seed * 67 + i * 23) * 8) + 1;
+      html += `<span class="gh-reaction-pill">${REACTION_EMOJIS[idx]} ${num}</span>`;
+    }
+    html += '<span class="gh-reaction-add">😀 +</span></div>';
+    return html;
+  }
+
+  // ================================================================
+  // Collapsible media block builder (shared by feed + PR views)
+  // ================================================================
+  function buildMediaBlock(mediaUrls) {
+    if (!mediaUrls || mediaUrls.length === 0) return null;
+    const wrapper = document.createElement("div");
+    wrapper.className = "gh-media-wrapper";
+    const toggle = document.createElement("div");
+    toggle.className = "gh-media-toggle";
+    toggle.innerHTML = ICONS.expand;
+    const collapsible = document.createElement("div");
+    collapsible.className = "gh-media-collapsible";
+
+    mediaUrls.forEach(m => {
+      const img = document.createElement("img");
+      img.src = m.src;
+      img.className = "gh-media-img";
+      collapsible.appendChild(img);
+    });
+
+    let expanded = false;
+    toggle.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      expanded = !expanded;
+      if (expanded) {
+        collapsible.style.maxHeight = collapsible.scrollHeight + "px";
+        collapsible.classList.add("gh-expanded");
+        toggle.querySelector("svg").style.transform = "rotate(-90deg)";
+      } else {
+        collapsible.style.maxHeight = collapsible.scrollHeight + "px";
+        collapsible.offsetHeight;
+        collapsible.style.maxHeight = "0";
+        collapsible.classList.remove("gh-expanded");
+        toggle.querySelector("svg").style.transform = "";
+      }
+    });
+
+    wrapper.appendChild(toggle);
+    wrapper.appendChild(collapsible);
+    return wrapper;
+  }
+
+  // ================================================================
+  // Build detail overlay (full PR conversation page)
+  // ================================================================
+  function buildDetailOverlay(commitData) {
+    detailOverlay = document.createElement("div");
+    detailOverlay.id = "gh-overlay";
+
+    const commitDate = commitData.datetime
+      ? new Date(commitData.datetime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : "recently";
+    const prNumber = Math.floor(Math.abs(parseInt(commitData.hash, 16)) % 900) + 100;
+    const branchSeed = commitData.hash.charCodeAt(0) * 100 + (commitData.hash.charCodeAt(1) || 0);
+    const featureBranch = generateBranchName(branchSeed);
+    const botName = settings.orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") + "-bot";
+
+    // Random diff stats
+    const additions = Math.floor(seededRandom(branchSeed * 11) * 2000) + 50;
+    const deletions = Math.floor(seededRandom(branchSeed * 19) * 500) + 10;
+    const filesChanged = Math.floor(seededRandom(branchSeed * 23) * 20) + 2;
+    const checksCount = Math.floor(seededRandom(branchSeed * 29) * 5) + 1;
+
+    // Diff bar segments (5 blocks, proportional green/red)
+    const total = additions + deletions;
+    const greenBlocks = Math.round((additions / total) * 5);
+    const redBlocks = 5 - greenBlocks;
+    const diffBar = `<span class="gh-diffbar">${'<span class="gh-diffbar-green">▪</span>'.repeat(greenBlocks)}${'<span class="gh-diffbar-red">▪</span>'.repeat(redBlocks)}</span>`;
+
+    detailOverlay.innerHTML = `
+      <div class="gh-header">
+        <div class="gh-hamburger">${ICONS.hamburger}</div>
+        <div class="gh-logo">${ICONS.octocat}</div>
+        <div class="gh-header-repo">
+          <span class="gh-header-display">
+            <span class="gh-header-owner">${esc(settings.orgName)}</span> / <strong class="gh-header-reponame">${esc(settings.repoName)}</strong> <span class="gh-lock">🔒</span>
+          </span>
+        </div>
+        <input class="gh-search" type="text" placeholder="Type / to search" readonly>
+        <div class="gh-header-right">
+          ${ICONS.bell} ${ICONS.plus}
+          <div class="gh-avatar-circle"></div>
+        </div>
+      </div>
+
+      <div class="gh-repo-nav">
+        <div class="gh-tab">${ICONS.code} Code</div>
+        <div class="gh-tab">${ICONS.pr} Pull requests <span class="gh-count">9</span></div>
+        <div class="gh-tab">${ICONS.actions} Actions</div>
+        <div class="gh-tab">${ICONS.security} Security and quality</div>
+        <div class="gh-tab">${ICONS.insights} Insights</div>
+        <div class="gh-tab">${ICONS.settings} Settings</div>
+      </div>
+
+      <div class="gh-detail-content">
+        <div class="gh-pr-title-row">
+          <h1 class="gh-pr-title">${esc(commitData.text)} <span class="gh-pr-number">#${prNumber}</span></h1>
+          <div class="gh-pr-title-buttons">
+            <span class="gh-btn-outline">Not ready</span>
+            <span class="gh-btn-green">Code ▾</span>
+          </div>
+        </div>
+
+        <div class="gh-pr-status-line">
+          <span class="gh-pr-draft-badge">${ICONS.pr} Draft</span>
+          <span class="gh-pr-merge-text">
+            <strong>${esc(commitData.authorName)}</strong> wants to merge 1 commit into
+            <code class="gh-branch-pill">${esc(settings.branchName)}</code>
+            from
+            <code class="gh-branch-pill">${esc(featureBranch)}</code>
+          </span>
+        </div>
+
+        <div class="gh-detail-tabs">
+          <div class="gh-detail-tab gh-detail-tab-active">${ICONS.pr} Conversation <span class="gh-count" id="gh-convo-count">1</span></div>
+          <div class="gh-detail-tab">${ICONS.commit} Commits <span class="gh-count">1</span></div>
+          <div class="gh-detail-tab">${ICONS.check} Checks <span class="gh-count">${checksCount}</span></div>
+          <div class="gh-detail-tab">${ICONS.code} Files changed <span class="gh-count">${filesChanged}</span></div>
+          <div class="gh-detail-diffstat">
+            <span class="gh-diffstat-add">+${additions.toLocaleString()}</span>
+            <span class="gh-diffstat-del">-${deletions.toLocaleString()}</span>
+            ${diffBar}
+          </div>
+        </div>
+
+        <div class="gh-pr-body-layout">
+          <div class="gh-pr-main">
+            <div class="gh-detail-timeline">
+              <div class="gh-timeline-line"></div>
+
+              <div class="gh-comment gh-comment-op">
+                <div class="gh-comment-gutter">
+                  <div class="gh-comment-avatar">
+                    ${commitData.avatarUrl
+                      ? `<img src="${commitData.avatarUrl}" class="gh-comment-avatar-img" />`
+                      : `<div class="gh-comment-avatar-placeholder"></div>`}
+                  </div>
+                </div>
+                <div class="gh-comment-body-wrap">
+                  <div class="gh-comment-header">
+                    <strong class="gh-comment-author">${esc(commitData.authorName)}</strong>
+                    <span class="gh-comment-time">commented on ${esc(commitDate)}</span>
+                    <span class="gh-comment-badge-owner">Author</span>
+                    <span class="gh-comment-dots">···</span>
+                  </div>
+                  <div class="gh-comment-body">No description provided.</div>
+                  <div class="gh-comment-media-slot" id="gh-op-media-slot"></div>
+                  <div class="gh-comment-reactions">
+                    <span class="gh-reaction-add-solo">😀</span>
+                  </div>
+                </div>
+              </div>
+
+              <div id="gh-detail-replies"></div>
+            </div>
+          </div>
+
+          <div class="gh-pr-sidebar">
+            <div class="gh-sidebar-section">
+              <div class="gh-sidebar-heading">Reviewers <span class="gh-sidebar-gear">⚙</span></div>
+              <div class="gh-sidebar-subtext">Suggestions</div>
+              <div class="gh-sidebar-reviewer">
+                <div class="gh-sidebar-avatar-sm"></div>
+                <span>${esc(botName)}</span>
+                <a class="gh-sidebar-request">Request</a>
+              </div>
+            </div>
+            <div class="gh-sidebar-section">
+              <div class="gh-sidebar-heading">Assignees <span class="gh-sidebar-gear">⚙</span></div>
+              <div class="gh-sidebar-empty">No one—<a class="gh-sidebar-link">assign yourself</a></div>
+            </div>
+            <div class="gh-sidebar-section">
+              <div class="gh-sidebar-heading">Labels <span class="gh-sidebar-gear">⚙</span></div>
+              <div class="gh-sidebar-empty">None yet</div>
+            </div>
+            <div class="gh-sidebar-section">
+              <div class="gh-sidebar-heading">Projects <span class="gh-sidebar-gear">⚙</span></div>
+              <div class="gh-sidebar-empty">None yet</div>
+            </div>
+            <div class="gh-sidebar-section">
+              <div class="gh-sidebar-heading">Milestone <span class="gh-sidebar-gear">⚙</span></div>
+              <div class="gh-sidebar-empty">No milestone</div>
+            </div>
+            <div class="gh-sidebar-section">
+              <div class="gh-sidebar-heading">Development <span class="gh-sidebar-gear">⚙</span></div>
+              <div class="gh-sidebar-empty">Successfully merging this pull request may close these issues.</div>
+              <div class="gh-sidebar-empty" style="margin-top:4px;">None yet</div>
+            </div>
+            <div class="gh-sidebar-section gh-sidebar-notifications">
+              <div class="gh-sidebar-heading">Notifications <span class="gh-sidebar-customize">Customize</span></div>
+              <button class="gh-subscribe-btn">${ICONS.bell} Subscribe</button>
+              <div class="gh-sidebar-subtext">You're not receiving notifications from this thread.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(detailOverlay);
+
+    // OP media
+    const opMediaBlock = buildMediaBlock(commitData.mediaUrls);
+    if (opMediaBlock) {
+      detailOverlay.querySelector("#gh-op-media-slot").appendChild(opMediaBlock);
+    }
+
+    // Back button — click org/repo in header
+    const headerDisplay = detailOverlay.querySelector(".gh-header-display");
+    if (headerDisplay) {
+      headerDisplay.style.cursor = "pointer";
+      headerDisplay.addEventListener("click", (e) => {
+        e.preventDefault();
+        chrome.storage.local.remove("commitDetail", () => {
+          location.href = "https://x.com/home";
+        });
+      });
+    }
+
+    // Start polling for replies
+    const repliesContainer = detailOverlay.querySelector("#gh-detail-replies");
+    let replyCounter = 0;
+
+    function pollReplies() {
+      try {
+        const replies = extractRepliesFromDOM();
+        for (const reply of replies) {
+          renderReplyComment(reply, repliesContainer, ++replyCounter, botName);
+        }
+        // Update conversation count
+        const countEl = detailOverlay.querySelector("#gh-convo-count");
+        if (countEl) countEl.textContent = 1 + replyCounter;
+      } catch (e) { /* silent */ }
+    }
+
+    pollReplies();
+    detailPollTimer = setInterval(pollReplies, POLL_INTERVAL_MS);
+
+    // Scroll delegation for loading more replies
+    detailOverlay.addEventListener("scroll", () => {
+      const distFromBottom = detailOverlay.scrollHeight - detailOverlay.scrollTop - detailOverlay.clientHeight;
+      if (distFromBottom < 800) {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      }
+    });
+  }
+
+  function renderReplyComment(reply, container, index, botName) {
+    const replyDate = reply.datetime ? relativeTime(reply.datetime) : "recently";
+    const reactions = generateReactions(index * 7 + 3);
+
+    const comment = document.createElement("div");
+    comment.className = "gh-comment";
+    comment.innerHTML = `
+      <div class="gh-comment-gutter">
+        <div class="gh-comment-avatar">
+          ${reply.avatarUrl
+            ? `<img src="${reply.avatarUrl}" class="gh-comment-avatar-img" />`
+            : `<div class="gh-comment-avatar-placeholder"></div>`}
+        </div>
+      </div>
+      <div class="gh-comment-body-wrap">
+        <div class="gh-comment-header">
+          <strong class="gh-comment-author">${esc(reply.authorName)}</strong>
+          <span class="gh-comment-time">commented ${esc(replyDate)}</span>
+          <span class="gh-comment-dots">···</span>
+        </div>
+        <div class="gh-comment-body">${esc(reply.text)}</div>
+        <div class="gh-comment-media-slot"></div>
+        <div class="gh-comment-reactions">
+          ${reactions || '<span class="gh-reaction-add-solo">😀</span>'}
+        </div>
+      </div>
+    `;
+
+    // Append media block if reply has media
+    const mediaBlock = buildMediaBlock(reply.mediaUrls);
+    if (mediaBlock) {
+      comment.querySelector(".gh-comment-media-slot").appendChild(mediaBlock);
+    }
+
+    container.appendChild(comment);
+  }
+
+  // ================================================================
+  // Activation / Deactivation
+  // ================================================================
+  let isActive = false;
+  let currentMode = "feed"; // "feed" or "detail"
+
+  async function activate() {
+    await loadSettings();
+    isActive = true;
+    document.body.classList.add("gitdisguise-active");
+    chrome.storage.local.set({ gitDisguiseActive: true });
+
+    // Check if we should show commit detail mode
+    const stored = await new Promise(resolve => {
+      chrome.storage.local.get("commitDetail", resolve);
+    });
+
+    if (stored.commitDetail) {
+      // Came from a <> click — we have full commit data
+      currentMode = "detail";
+      const cd = stored.commitDetail;
+      history.replaceState(null, "", `/${encodeURIComponent(settings.orgName)}/${encodeURIComponent(settings.repoName)}/commit/${cd.hash}`);
+      buildDetailOverlay(cd);
+      // Clean up so refreshing the page re-extracts from DOM
+      chrome.storage.local.remove("commitDetail");
+    } else if (isStatusPage()) {
+      // Navigated directly to a tweet/status URL — extract from DOM
+      currentMode = "detail";
+      const mainTweet = await extractMainTweetFromDOM();
+      history.replaceState(null, "", `/${encodeURIComponent(settings.orgName)}/${encodeURIComponent(settings.repoName)}/commit/${mainTweet.hash}`);
+      buildDetailOverlay(mainTweet);
+    } else {
+      currentMode = "feed";
+      disguiseUrl();
+      buildOverlay();
+      poll();
+      pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+    }
+  }
+
+  function deactivate() {
+    isActive = false;
+    document.body.classList.remove("gitdisguise-active");
+    chrome.storage.local.set({ gitDisguiseActive: false });
+
+    // Restore original URL
+    restoreUrl();
+
+    // Remove overlays
+    if (overlay) { overlay.remove(); overlay = null; }
+    if (detailOverlay) { detailOverlay.remove(); detailOverlay = null; }
+    commitListEl = null;
+    lastRenderedDateGroup = null;
+    currentDateCard = null;
+    rowCounter = 0;
+    seenTweetIds.clear();
+    seenReplyIds.clear();
+    currentMode = "feed";
+
+    // Stop polling
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (detailPollTimer) { clearInterval(detailPollTimer); detailPollTimer = null; }
+  }
+
+  // ================================================================
+  // Message listener + Auto-activate
+  // ================================================================
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "toggle") {
+      isActive ? deactivate() : activate();
+      sendResponse({ active: isActive });
+    } else if (message.action === "getStatus") {
+      sendResponse({ active: isActive });
+    }
+    return true;
+  });
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => activate());
