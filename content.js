@@ -276,6 +276,7 @@
     chrome.storage.local.set({ gitDisguiseActive: true });
     loadSettings().then(() => {
       disguiseUrl();
+      buildOverlay();
     });
   }
 
@@ -295,6 +296,294 @@
 
     // Stop polling
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  // ================================================================
+  // Overlay DOM construction
+  // ================================================================
+  function buildOverlay() {
+    overlay = document.createElement("div");
+    overlay.id = "gh-overlay";
+
+    overlay.innerHTML = `
+      <div class="gh-header">
+        <div class="gh-hamburger">${ICONS.hamburger}</div>
+        <div class="gh-logo">${ICONS.octocat}</div>
+        <div class="gh-header-repo" title="Click to edit">
+          <span class="gh-header-display">
+            <span class="gh-header-owner">${esc(settings.orgName)}</span> / <strong class="gh-header-reponame">${esc(settings.repoName)}</strong> <span class="gh-lock">🔒</span>
+          </span>
+          <span class="gh-header-edit" style="display:none;">
+            <input class="gh-edit-org" type="text" />
+            <span class="gh-edit-slash">/</span>
+            <input class="gh-edit-repo" type="text" />
+            <button class="gh-edit-save">Save</button>
+            <button class="gh-edit-cancel">✕</button>
+          </span>
+        </div>
+        <input class="gh-search" type="text" placeholder="Type / to search" readonly>
+        <div class="gh-header-right">
+          ${ICONS.bell} ${ICONS.plus}
+          <div class="gh-avatar-circle"></div>
+        </div>
+      </div>
+
+      <div class="gh-repo-nav">
+        <a class="gh-tab gh-tab-link" data-gh-path="">${ICONS.code} Code</a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/issues">${ICONS.issues} Issues <span class="gh-count">474</span></a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/pulls">${ICONS.pr} Pull requests <span class="gh-count">160</span></a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/actions">${ICONS.actions} Actions</a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/projects">${ICONS.projects} Projects</a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/wiki">${ICONS.wiki} Wiki</a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/security">${ICONS.security} Security and quality</a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/pulse">${ICONS.insights} Insights</a>
+        <a class="gh-tab gh-tab-link" data-gh-path="/settings">${ICONS.settings} Settings</a>
+      </div>
+
+      <div class="gh-content">
+        <div class="gh-commits-header">
+          <div class="gh-commits-title">Commits</div>
+          <div class="gh-filter-row">
+            <div class="gh-branch-selector" id="gh-branch-toggle">
+              ${ICONS.branch}
+              <span class="gh-branch-name">${esc(settings.branchName)}</span>
+              <span class="gh-dropdown-arrow">▼</span>
+              <div class="gh-branch-dropdown" id="gh-branch-dropdown">
+                <div class="gh-branch-dropdown-header">Switch branches</div>
+                <div class="gh-branch-option" data-branch="dev" data-tab="for-you">dev</div>
+                <div class="gh-branch-option" data-branch="prod" data-tab="following">prod</div>
+              </div>
+            </div>
+            <div class="gh-filter-buttons">
+              <div class="gh-filter-btn">${ICONS.user} All users ▼</div>
+              <div class="gh-filter-btn">${ICONS.calendar} All time ▼</div>
+            </div>
+          </div>
+        </div>
+        <div class="gh-commit-list" id="gh-commit-list"></div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    commitListEl = overlay.querySelector("#gh-commit-list");
+
+    // ---- Toast notification system (override: only one at a time) ----
+    const toastContainer = document.createElement("div");
+    toastContainer.className = "gh-toast-container";
+    overlay.appendChild(toastContainer);
+
+    // Scroll delegation: mirror our overlay scroll position to the real
+    // document scroll so Twitter's virtual-scroll and infinite-loading fire.
+    // Twitter is visibility:hidden but still in normal document flow.
+    let scrollThrottled = false;
+    overlay.addEventListener("scroll", () => {
+      if (scrollThrottled) return;
+      scrollThrottled = true;
+      requestAnimationFrame(() => { scrollThrottled = false; });
+
+      // Map overlay scroll position proportionally to document height
+      const overlayPct = overlay.scrollTop / (overlay.scrollHeight - overlay.clientHeight || 1);
+      const targetY = overlayPct * (document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo(0, targetY);
+    });
+
+    // Also: when nearing overlay bottom, aggressively scroll Twitter to its bottom
+    // to force new tweet loading
+    overlay.addEventListener("scroll", () => {
+      const distFromBottom = overlay.scrollHeight - overlay.scrollTop - overlay.clientHeight;
+      if (distFromBottom < 800) {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      }
+    });
+
+    // ---- Repo nav tab links → real GitHub pages ----
+    function updateTabLinks() {
+      const base = `https://github.com/${encodeURIComponent(settings.orgName)}/${encodeURIComponent(settings.repoName)}`;
+      overlay.querySelectorAll(".gh-tab-link").forEach(tab => {
+        tab.href = base + (tab.dataset.ghPath || "");
+        tab.target = "_blank";
+        tab.rel = "noopener";
+      });
+    }
+    updateTabLinks();
+
+    // ---- Inline edit for org/repo name ----
+    const displayEl = overlay.querySelector(".gh-header-display");
+    const editEl = overlay.querySelector(".gh-header-edit");
+    const editOrgInput = overlay.querySelector(".gh-edit-org");
+    const editRepoInput = overlay.querySelector(".gh-edit-repo");
+
+    displayEl.style.cursor = "pointer";
+    displayEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editOrgInput.value = settings.orgName;
+      editRepoInput.value = settings.repoName;
+      displayEl.style.display = "none";
+      editEl.style.display = "inline-flex";
+      editOrgInput.focus();
+    });
+
+    function saveEdit() {
+      const newOrg = editOrgInput.value.trim() || SETTINGS_DEFAULTS.orgName;
+      const newRepo = editRepoInput.value.trim() || SETTINGS_DEFAULTS.repoName;
+      settings.orgName = newOrg;
+      settings.repoName = newRepo;
+      chrome.storage.sync.set({ orgName: newOrg, repoName: newRepo });
+      overlay.querySelector(".gh-header-owner").textContent = newOrg;
+      overlay.querySelector(".gh-header-reponame").textContent = newRepo;
+      editEl.style.display = "none";
+      displayEl.style.display = "";
+      disguiseUrl();
+      updateTabLinks();
+    }
+
+    function cancelEdit() {
+      editEl.style.display = "none";
+      displayEl.style.display = "";
+    }
+
+    overlay.querySelector(".gh-edit-save").addEventListener("click", (e) => { e.stopPropagation(); saveEdit(); });
+    overlay.querySelector(".gh-edit-cancel").addEventListener("click", (e) => { e.stopPropagation(); cancelEdit(); });
+
+    // Enter to save, Escape to cancel
+    [editOrgInput, editRepoInput].forEach(input => {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
+        if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+      });
+      input.addEventListener("click", (e) => e.stopPropagation());
+    });
+
+    // ---- Branch dropdown: dev = "For You", prod = "Following" ----
+    const branchToggle = overlay.querySelector("#gh-branch-toggle");
+    const branchDropdown = overlay.querySelector("#gh-branch-dropdown");
+    const branchNameEl = overlay.querySelector(".gh-branch-name");
+
+    branchToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      branchDropdown.classList.toggle("gh-dropdown-open");
+    });
+
+    // Close dropdown when clicking outside
+    overlay.addEventListener("click", () => {
+      branchDropdown.classList.remove("gh-dropdown-open");
+    });
+
+    branchDropdown.querySelectorAll(".gh-branch-option").forEach(opt => {
+      opt.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const branch = opt.dataset.branch;
+        const tab = opt.dataset.tab;
+
+        // Update UI
+        branchNameEl.textContent = branch;
+        settings.branchName = branch;
+        chrome.storage.sync.set({ branchName: branch });
+        branchDropdown.classList.remove("gh-dropdown-open");
+        disguiseUrl();
+
+        // Click the corresponding Twitter tab in the hidden DOM
+        switchTwitterTab(tab);
+
+        // Clear existing commits and re-poll
+        clearCommitList();
+      });
+    });
+
+    // ---- Elastic pull-to-refresh ----
+    let pullStartY = 0;
+    let isPulling = false;
+    let pullDistance = 0;
+    const PULL_THRESHOLD = 120;
+
+    const refreshIndicator = document.createElement("div");
+    refreshIndicator.className = "gh-pull-refresh";
+    refreshIndicator.innerHTML = `<span class="gh-pull-text">Pull to refresh</span>`;
+    overlay.insertBefore(refreshIndicator, overlay.firstChild);
+
+    overlay.addEventListener("touchstart", (e) => {
+      if (overlay.scrollTop === 0) {
+        pullStartY = e.touches[0].clientY;
+        isPulling = true;
+      }
+    }, { passive: true });
+
+    overlay.addEventListener("touchmove", (e) => {
+      if (!isPulling) return;
+      pullDistance = Math.max(0, e.touches[0].clientY - pullStartY);
+      if (pullDistance > 0 && overlay.scrollTop === 0) {
+        const dampened = Math.min(pullDistance * 0.5, 160);
+        refreshIndicator.style.height = dampened + "px";
+        refreshIndicator.style.opacity = Math.min(dampened / PULL_THRESHOLD, 1);
+        refreshIndicator.querySelector(".gh-pull-text").textContent =
+          dampened >= PULL_THRESHOLD * 0.5 ? "Release to refresh" : "Pull to refresh";
+      }
+    }, { passive: true });
+
+    overlay.addEventListener("touchend", () => {
+      if (!isPulling) return;
+      isPulling = false;
+      const dampened = Math.min(pullDistance * 0.5, 160);
+      if (dampened >= PULL_THRESHOLD * 0.5) {
+        triggerRefresh();
+      }
+      // Snap back with elastic ease
+      refreshIndicator.style.transition = "height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease";
+      refreshIndicator.style.height = "0px";
+      refreshIndicator.style.opacity = "0";
+      setTimeout(() => { refreshIndicator.style.transition = ""; }, 400);
+      pullDistance = 0;
+    }, { passive: true });
+
+    // Mouse wheel pull-to-refresh: overscroll at top
+    let wheelAccumulator = 0;
+    let wheelResetTimer = null;
+
+    overlay.addEventListener("wheel", (e) => {
+      if (overlay.scrollTop > 0 || e.deltaY > 0) {
+        wheelAccumulator = 0;
+        refreshIndicator.style.height = "0px";
+        refreshIndicator.style.opacity = "0";
+        return;
+      }
+
+      // Scrolling up while at top
+      wheelAccumulator += Math.abs(e.deltaY);
+      const dampened = Math.min(wheelAccumulator * 0.3, 160);
+      refreshIndicator.style.transition = "";
+      refreshIndicator.style.height = dampened + "px";
+      refreshIndicator.style.opacity = Math.min(dampened / PULL_THRESHOLD, 1);
+      refreshIndicator.querySelector(".gh-pull-text").textContent =
+        dampened >= PULL_THRESHOLD * 0.5 ? "Release to refresh" : "Pull to refresh";
+
+      clearTimeout(wheelResetTimer);
+      wheelResetTimer = setTimeout(() => {
+        if (dampened >= PULL_THRESHOLD * 0.5) {
+          triggerRefresh();
+        }
+        refreshIndicator.style.transition = "height 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease";
+        refreshIndicator.style.height = "0px";
+        refreshIndicator.style.opacity = "0";
+        setTimeout(() => { refreshIndicator.style.transition = ""; }, 400);
+        wheelAccumulator = 0;
+      }, 200);
+    }, { passive: true });
+
+    return overlay;
+  }
+
+  // Helper functions (stub implementations for now)
+  function switchTwitterTab(tabName) {
+    // Will be implemented in commit 10
+  }
+
+  function clearCommitList() {
+    if (commitListEl) commitListEl.innerHTML = "";
+    lastRenderedDateGroup = null;
+  }
+
+  function triggerRefresh() {
+    // Will be implemented in commit 10
   }
 
   if (document.readyState === "loading") {

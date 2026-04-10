@@ -65,3 +65,164 @@ body.gitdisguise-active {
 /* Scrollbar */
 #gh-overlay::-webkit-scrollbar { width: 8px; background: var(--gh-bg); }
 #gh-overlay::-webkit-scrollbar-thumb { background: var(--gh-border); border-radius: 4px; }
+
+/* =========================================================
+   3. HEADER BAR
+   ========================================================= */
+.gh-header {
+  position: sticky;
+  top: 0;
+  height: 48px;
+  background-color: var(--gh-header-bg);
+  border-bottom: 1px solid var(--gh-border);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 8px;
+}
+
+.gh-hamburger {
+  color: var(--gh-white);
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  cursor: default;
+}
+.gh-hamburger svg { width: 16px; height: 16px; }
+
+.gh-logo {
+  display: flex;
+  align-items: center;
+  margin-right: 4px;
+}
+.gh-logo svg { width: 32px; height: 32px; }
+
+.gh-header-repo {
+  color: var(--gh-white);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gh-header-display { cursor: pointer; }
+.gh-header-display:hover { text-decoration: underline; text-underline-offset: 3px; }
+.gh-header-owner { font-weight: 400; opacity: 0.8; }
+.gh-lock { font-size: 12px; opacity: 0.5; }
+
+/* Inline edit form */
+.gh-header-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gh-edit-org, .gh-edit-repo {
+  width: 90px;
+  padding: 2px 8px;
+  font-size: 13px;
+  font-family: var(--gh-font);
+  background: var(--gh-bg);
+  border: 1px solid var(--gh-border);
+  border-radius: 4px;
+  color: var(--gh-white);
+  outline: none;
+}
+.gh-edit-org:focus, .gh-edit-repo:focus {
+  border-color: var(--gh-text-link);
+  box-shadow: 0 0 0 2px rgba(88,166,255,0.3);
+}
+.gh-edit-slash {
+  color: var(--gh-text-muted);
+  font-weight: 400;
+}
+.gh-edit-save {
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--gh-font);
+  background: var(--gh-green-muted);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.gh-edit-save:hover { background: var(--gh-green); }
+.gh-edit-cancel {
+  padding: 2px 6px;
+  font-size: 14px;
+  font-family: var(--gh-font);
+  background: transparent;
+  color: var(--gh-text-muted);
+  border: none;
+  cursor: pointer;
+}
+.gh-edit-cancel:hover { color: var(--gh-white); }
+
+.gh-search {
+  background-color: var(--gh-bg);
+  border: 1px solid var(--gh-border);
+  border-radius: 6px;
+  color: var(--gh-text-muted);
+  padding: 3px 12px;
+  font-size: 13px;
+  width: 240px;
+  outline: none;
+  margin-left: auto;
+  font-family: var(--gh-font);
+}
+
+.gh-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--gh-text-muted);
+}
+.gh-header-right svg { width: 16px; height: 16px; opacity: 0.7; }
+.gh-avatar-circle {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #30363d;
+}
+
+/* =========================================================
+   4. REPO NAV TABS
+   ========================================================= */
+.gh-repo-nav {
+  position: sticky;
+  top: 48px;
+  background-color: var(--gh-bg);
+  border-bottom: 1px solid var(--gh-border);
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  height: 48px;
+  overflow-x: auto;
+  gap: 0;
+}
+
+.gh-tab {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--gh-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+}
+#gh-overlay .gh-tab, #gh-overlay .gh-tab:link, #gh-overlay .gh-tab:visited { color: var(--gh-text-muted); }
+#gh-overlay .gh-tab:hover { color: var(--gh-text); text-decoration: none; }
+.gh-tab svg { width: 16px; height: 16px; fill: currentColor; flex-shrink: 0; }
+
+.gh-count {
+  background-color: var(--gh-btn-bg);
+  color: var(--gh-text-muted);
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 18px;
+  min-width: 20px;
+  text-align: center;
+}
