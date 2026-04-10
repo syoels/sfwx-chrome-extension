@@ -775,20 +775,60 @@
     currentDateCard.appendChild(row);
   }
 
-  // Helper functions (stub implementations for now)
+  // ================================================================
+  // Twitter tab switching (For You ↔ Following)
+  // ================================================================
   function switchTwitterTab(tabName) {
-    // Will be implemented in commit 10
+    // Twitter's tab bar uses [role="tab"] elements
+    const tabs = document.querySelectorAll('[role="tab"]');
+    for (const tab of tabs) {
+      const text = tab.textContent.trim().toLowerCase();
+      if (tabName === "for-you" && (text === "for you" || text === "foryou")) {
+        tab.click();
+        return;
+      }
+      if (tabName === "following" && text === "following") {
+        tab.click();
+        return;
+      }
+    }
+    // Fallback: try link-based navigation
+    const links = document.querySelectorAll('a[role="tab"]');
+    for (const link of links) {
+      const text = link.textContent.trim().toLowerCase();
+      if (tabName === "for-you" && text.includes("for you")) { link.click(); return; }
+      if (tabName === "following" && text.includes("following")) { link.click(); return; }
+    }
   }
 
   function clearCommitList() {
     if (commitListEl) commitListEl.innerHTML = "";
+    seenTweetIds.clear();
     lastRenderedDateGroup = null;
     currentDateCard = null;
     rowCounter = 0;
+    // Force immediate re-poll after short delay for DOM to update
+    setTimeout(poll, 600);
   }
 
   function triggerRefresh() {
-    // Will be implemented in commit 10
+    // Scroll Twitter back to top to reset its virtualized list
+    window.scrollTo(0, 0);
+    clearCommitList();
+  }
+
+  // ================================================================
+  // Main poll loop: extract new tweets, render them
+  // ================================================================
+  function poll() {
+    try {
+      const newTweets = extractTweetsFromDOM();
+      for (const tweet of newTweets) {
+        renderCommitRow(tweet);
+      }
+    } catch (e) {
+      // Silent — don't break the poll loop
+    }
   }
 
   if (document.readyState === "loading") {
