@@ -1320,9 +1320,16 @@
     if (toggleFab) return;
     toggleFab = document.createElement("div");
     toggleFab.id = "gd-toggle-fab";
-    toggleFab.innerHTML = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M5.22 14.78a.75.75 0 001.06-1.06L4.56 12h8.69a.75.75 0 000-1.5H4.56l1.72-1.72a.75.75 0 00-1.06-1.06l-3 3a.75.75 0 000 1.06l3 3zm5.56-6.5a.75.75 0 11-1.06-1.06l1.72-1.72H2.75a.75.75 0 010-1.5h8.69L9.72 2.28a.75.75 0 011.06-1.06l3 3a.75.75 0 010 1.06l-3 3z"/></svg>`;
+    toggleFab.innerHTML = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M5.22 14.78a.75.75 0 001.06-1.06L4.56 12h8.69a.75.75 0 000-1.5H4.56l1.72-1.72a.75.75 0 00-1.06-1.06l-3 3a.75.75 0 000 1.06l3 3zm5.56-6.5a.75.75 0 11-1.06-1.06l1.72-1.72H2.75a.75.75 0 010-1.5h8.69L9.72 2.28a.75.75 0 011.06-1.06l3 3a.75.75 0 010 1.06l-3 3z"/></svg><button class="gd-fab-dismiss" title="Dismiss until next session">✕</button>`;
     toggleFab.title = "Switch view";
     document.body.appendChild(toggleFab);
+
+    // Dismiss button — hide fab for rest of session
+    toggleFab.querySelector(".gd-fab-dismiss").addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleFab.remove();
+      toggleFab = null;
+    });
 
     // Update visual mode class
     updateFabMode();
@@ -1377,6 +1384,8 @@
       toggleFab.classList.remove("gd-fab-gh");
       toggleFab.classList.add("gd-fab-tw");
     }
+    // Re-append so fab is always the last body child (on top of overlay)
+    document.body.appendChild(toggleFab);
   }
 
   function removeToggleFab() {
@@ -1452,7 +1461,6 @@
     document.body.classList.add("gitdisguise-active");
     chrome.storage.local.set({ gitDisguiseActive: true });
     createToggleFab();
-    updateFabMode();
 
     // Check if we should show commit detail mode
     const stored = await new Promise(resolve => {
@@ -1480,6 +1488,9 @@
       poll();
       pollTimer = setInterval(poll, POLL_INTERVAL_MS);
     }
+
+    // Must run AFTER overlay is built so fab is last in DOM order
+    updateFabMode();
   }
 
   function deactivate() {

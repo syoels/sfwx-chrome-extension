@@ -1045,12 +1045,12 @@ body.gitdisguise-active {
   box-shadow: 0 6px 20px rgba(29,155,240,0.4);
 }
 
-/* GitHub view: transparent unless hovered */
+/* GitHub view: subtle but visible */
 #gd-toggle-fab.gd-fab-gh {
   background: var(--gh-btn-bg);
   color: var(--gh-text-muted);
   border: 1px solid var(--gh-btn-border);
-  opacity: 0;
+  opacity: 0.45;
 }
 #gd-toggle-fab.gd-fab-gh:hover {
   opacity: 1;
@@ -1059,6 +1059,28 @@ body.gitdisguise-active {
   transform: scale(1.08);
   box-shadow: 0 6px 20px rgba(0,0,0,0.5);
 }
+
+/* Dismiss (x) button */
+#gd-toggle-fab .gd-fab-dismiss {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #484f58;
+  color: #e6edf3;
+  border: none;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+  display: none;
+  z-index: 1;
+}
+#gd-toggle-fab:hover .gd-fab-dismiss { display: block; }
+#gd-toggle-fab .gd-fab-dismiss:hover { background: #f85149; color: #fff; }
 
 /* =========================================================
    15. VIEW TRANSITION CURTAIN
