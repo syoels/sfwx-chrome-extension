@@ -1309,11 +1309,150 @@
   let isActive = false;
   let currentMode = "feed"; // "feed" or "detail"
 
+  // ================================================================
+  // Floating toggle button (draggable, persists across views)
+  // ================================================================
+  let toggleFab = null;
+  const TRANSITION_MS = 1300;
+  const HALF_TRANSITION = TRANSITION_MS / 2;
+
+  function createToggleFab() {
+    if (toggleFab) return;
+    toggleFab = document.createElement("div");
+    toggleFab.id = "gd-toggle-fab";
+    toggleFab.innerHTML = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M5.22 14.78a.75.75 0 001.06-1.06L4.56 12h8.69a.75.75 0 000-1.5H4.56l1.72-1.72a.75.75 0 00-1.06-1.06l-3 3a.75.75 0 000 1.06l3 3zm5.56-6.5a.75.75 0 11-1.06-1.06l1.72-1.72H2.75a.75.75 0 010-1.5h8.69L9.72 2.28a.75.75 0 011.06-1.06l3 3a.75.75 0 010 1.06l-3 3z"/></svg>`;
+    toggleFab.title = "Switch view";
+    document.body.appendChild(toggleFab);
+
+    // Update visual mode class
+    updateFabMode();
+
+    // Drag support
+    let isDragging = false;
+    let wasDragged = false;
+    let startX, startY, startLeft, startTop;
+
+    toggleFab.addEventListener("pointerdown", (e) => {
+      isDragging = true;
+      wasDragged = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = toggleFab.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+      toggleFab.setPointerCapture(e.pointerId);
+      toggleFab.style.transition = "none";
+      e.preventDefault();
+    });
+
+    toggleFab.addEventListener("pointermove", (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) wasDragged = true;
+      const newLeft = Math.max(0, Math.min(window.innerWidth - 44, startLeft + dx));
+      const newTop = Math.max(0, Math.min(window.innerHeight - 44, startTop + dy));
+      toggleFab.style.left = newLeft + "px";
+      toggleFab.style.top = newTop + "px";
+      toggleFab.style.right = "auto";
+      toggleFab.style.bottom = "auto";
+    });
+
+    toggleFab.addEventListener("pointerup", (e) => {
+      isDragging = false;
+      toggleFab.releasePointerCapture(e.pointerId);
+      toggleFab.style.transition = "";
+      if (!wasDragged) {
+        performViewTransition();
+      }
+    });
+  }
+
+  function updateFabMode() {
+    if (!toggleFab) return;
+    if (isActive) {
+      toggleFab.classList.add("gd-fab-gh");
+      toggleFab.classList.remove("gd-fab-tw");
+    } else {
+      toggleFab.classList.remove("gd-fab-gh");
+      toggleFab.classList.add("gd-fab-tw");
+    }
+  }
+
+  function removeToggleFab() {
+    if (toggleFab) { toggleFab.remove(); toggleFab = null; }
+  }
+
+  function performViewTransition() {
+    if (toggleFab) toggleFab.style.pointerEvents = "none";
+
+    // Create the fullscreen cover + blur container
+    const curtain = document.createElement("div");
+    curtain.id = "gd-transition-curtain";
+    document.body.appendChild(curtain);
+
+    // Target to blur: the current active content
+    const blurTarget = isActive ? (overlay || detailOverlay) : document.getElementById("react-root");
+
+    // Phase 1: blur up + fade in the solid cover
+    if (blurTarget) blurTarget.style.transition = `filter ${HALF_TRANSITION}ms ease-in-out`;
+    if (blurTarget) blurTarget.style.filter = "blur(40px)";
+    curtain.style.transition = `opacity ${HALF_TRANSITION}ms ease-in-out`;
+    requestAnimationFrame(() => {
+      curtain.style.opacity = "1";
+    });
+
+    // At the midpoint: switch the view behind the curtain
+    setTimeout(() => {
+      // Clean up the blur on the outgoing view
+      if (blurTarget) {
+        blurTarget.style.transition = "";
+        blurTarget.style.filter = "";
+      }
+
+      // Toggle the actual view
+      if (isActive) {
+        deactivate();
+      } else {
+        activate();
+      }
+      updateFabMode();
+
+      // The new content — start it blurred
+      const newTarget = isActive ? (overlay || detailOverlay) : document.getElementById("react-root");
+      if (newTarget) {
+        newTarget.style.filter = "blur(40px)";
+        // Force reflow
+        void newTarget.offsetHeight;
+        newTarget.style.transition = `filter ${HALF_TRANSITION}ms ease-in-out`;
+      }
+
+      // Phase 2: unblur + fade out the cover
+      requestAnimationFrame(() => {
+        if (newTarget) newTarget.style.filter = "blur(0px)";
+        curtain.style.transition = `opacity ${HALF_TRANSITION}ms ease-in-out`;
+        curtain.style.opacity = "0";
+      });
+
+      // Clean up after full transition
+      setTimeout(() => {
+        curtain.remove();
+        if (newTarget) {
+          newTarget.style.transition = "";
+          newTarget.style.filter = "";
+        }
+        if (toggleFab) toggleFab.style.pointerEvents = "";
+      }, HALF_TRANSITION + 50);
+    }, HALF_TRANSITION);
+  }
+
   async function activate() {
     await loadSettings();
     isActive = true;
     document.body.classList.add("gitdisguise-active");
     chrome.storage.local.set({ gitDisguiseActive: true });
+    createToggleFab();
+    updateFabMode();
 
     // Check if we should show commit detail mode
     const stored = await new Promise(resolve => {
@@ -1365,6 +1504,9 @@
     // Stop polling
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (detailPollTimer) { clearInterval(detailPollTimer); detailPollTimer = null; }
+
+    // Keep fab alive but update its mode
+    updateFabMode();
   }
 
   // ================================================================
@@ -1372,7 +1514,11 @@
   // ================================================================
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "toggle") {
-      isActive ? deactivate() : activate();
+      if (isActive) {
+        deactivate();
+      } else {
+        activate();
+      }
       sendResponse({ active: isActive });
     } else if (message.action === "getStatus") {
       sendResponse({ active: isActive });
@@ -1380,9 +1526,15 @@
     return true;
   });
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => activate());
-  } else {
+  // Auto-activate on load, and always ensure FAB exists
+  function boot() {
+    createToggleFab();
     activate();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => boot());
+  } else {
+    boot();
   }
 })();

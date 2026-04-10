@@ -1007,3 +1007,67 @@ body.gitdisguise-active {
 /* Media inside PR comments */
 .gh-comment-media-slot { padding: 0 16px; }
 .gh-comment-media-slot .gh-media-wrapper { margin-top: 0; margin-bottom: 8px; }
+
+/* =========================================================
+   14. FLOATING VIEW-TOGGLE FAB
+   ========================================================= */
+#gd-toggle-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  z-index: 2147483647;
+  transition: opacity 0.3s ease, background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  user-select: none;
+  touch-action: none;
+}
+
+#gd-toggle-fab:active { cursor: grabbing; }
+
+#gd-toggle-fab svg { pointer-events: none; }
+
+/* Twitter view: always visible, dark button */
+#gd-toggle-fab.gd-fab-tw {
+  background: #1d9bf0;
+  color: #fff;
+  opacity: 1;
+}
+#gd-toggle-fab.gd-fab-tw:hover {
+  background: #1a8cd8;
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(29,155,240,0.4);
+}
+
+/* GitHub view: transparent unless hovered */
+#gd-toggle-fab.gd-fab-gh {
+  background: var(--gh-btn-bg);
+  color: var(--gh-text-muted);
+  border: 1px solid var(--gh-btn-border);
+  opacity: 0;
+}
+#gd-toggle-fab.gd-fab-gh:hover {
+  opacity: 1;
+  background: var(--gh-border);
+  color: var(--gh-text);
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+}
+
+/* =========================================================
+   15. VIEW TRANSITION CURTAIN
+   ========================================================= */
+#gd-transition-curtain {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 2147483646; /* just below the fab */
+  background: #0d1117;
+  opacity: 0;
+  pointer-events: all;
+}
