@@ -160,6 +160,94 @@
   };
 
   // ================================================================
+  // Data extraction from hidden Twitter DOM
+  // ================================================================
+  const seenTweetIds = new Set(); // track which tweets we've already extracted
+
+  function extractTweetsFromDOM() {
+    const tweets = [];
+    const articles = document.querySelectorAll('article[data-testid="tweet"]');
+
+    for (const article of articles) {
+      // Build a stable ID from content (since tweet DOM ids aren't exposed)
+      const tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+      const text = tweetTextEl ? tweetTextEl.textContent.trim() : "";
+      const timeEl = article.querySelector("time");
+      const datetime = timeEl ? timeEl.getAttribute("datetime") : null;
+
+      // Use text + time as a rough unique key
+      const stableKey = text.substring(0, 80) + "|" + (datetime || "");
+      if (seenTweetIds.has(stableKey)) continue;
+      seenTweetIds.add(stableKey);
+
+      // Extract author
+      const userNameEl = article.querySelector('[data-testid="User-Name"]');
+      let authorName = "developer";
+      let authorHandle = "dev";
+      if (userNameEl) {
+        const nameLink = userNameEl.querySelector("a");
+        if (nameLink) {
+          const spans = nameLink.querySelectorAll("span");
+          if (spans.length > 0) authorName = spans[0].textContent.trim();
+          const href = nameLink.getAttribute("href");
+          if (href) authorHandle = href.replace(/^\//, "");
+        }
+      }
+
+      // Extract tweet permalink
+      let tweetUrl = null;
+      const timeLink = timeEl ? timeEl.closest("a") : null;
+      if (timeLink) {
+        const href = timeLink.getAttribute("href");
+        if (href) tweetUrl = "https://x.com" + href;
+      }
+
+      // Extract avatar URL
+      const avatarImg = article.querySelector('[data-testid="Tweet-User-Avatar"] img');
+      const avatarUrl = avatarImg ? avatarImg.src : null;
+
+      // Extract media URLs
+      const mediaUrls = [];
+      const hasVideo = !!article.querySelector('[data-testid="videoPlayer"]');
+
+      // Images from tweetPhoto (skip if there's a video — the image is just a thumbnail)
+      if (!hasVideo) {
+        article.querySelectorAll('[data-testid="tweetPhoto"] img').forEach(img => {
+          const src = img.src;
+          if (src && !src.startsWith("data:") && !src.includes("emoji")) {
+            mediaUrls.push({ type: "image", src });
+          }
+        });
+      }
+
+      // For videos, grab the poster/thumbnail image instead of the <video> element
+      // (Twitter uses blob: URLs for video src which aren't accessible)
+      if (hasVideo) {
+        const videoEl = article.querySelector('[data-testid="videoPlayer"] video');
+        const poster = videoEl?.getAttribute("poster");
+        // Also look for a thumbnail img inside the video player
+        const thumbImg = article.querySelector('[data-testid="videoPlayer"] img');
+        const thumbSrc = poster || thumbImg?.src;
+        if (thumbSrc && !thumbSrc.startsWith("data:")) {
+          mediaUrls.push({ type: "image", src: thumbSrc });
+        }
+      }
+
+      tweets.push({
+        stableKey,
+        text: text || "Update dependencies",
+        authorName,
+        authorHandle,
+        avatarUrl,
+        tweetUrl,
+        datetime,
+        mediaUrls,
+      });
+    }
+    return tweets;
+  }
+
+  // ================================================================
   // Global state
   // ================================================================
   let overlay = null;
