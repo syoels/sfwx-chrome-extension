@@ -4,6 +4,8 @@
 
 Your boss walks by. You're doom-scrolling. Panic sets in. But wait — all they see is a developer deeply reviewing commit diffs on a very active repository. Crisis averted. Promotion pending.
 
+![Demo](https://github.com/user-attachments/assets/55d0ac14-efbf-4cad-889d-c6dab535b77f)
+
 ## What is this?
 
 GitDisguise overlays a pixel-perfect GitHub dark-theme UI on top of Twitter/X. Tweets become commits. Threads become PR conversations. Your timeline becomes a commit history. Nobody within a 3-meter radius will suspect a thing.
