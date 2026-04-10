@@ -1,5 +1,5 @@
 // ============================================================
-// GitDisguise — Content Script (Overlay Architecture)
+// SFWX — Content Script (Overlay Architecture)
 //
 // Instead of fighting Twitter's DOM, we:
 //  1. Hide Twitter's entire UI (keep it alive for data + infinite scroll)
@@ -1458,8 +1458,8 @@
   async function activate() {
     await loadSettings();
     isActive = true;
-    document.body.classList.add("gitdisguise-active");
-    chrome.storage.local.set({ gitDisguiseActive: true });
+    document.body.classList.add("sfwx-active");
+    chrome.storage.local.set({ sfwxActive: true });
     createToggleFab();
 
     // Check if we should show commit detail mode
@@ -1495,8 +1495,8 @@
 
   function deactivate() {
     isActive = false;
-    document.body.classList.remove("gitdisguise-active");
-    chrome.storage.local.set({ gitDisguiseActive: false });
+    document.body.classList.remove("sfwx-active");
+    chrome.storage.local.set({ sfwxActive: false });
 
     // Restore original URL
     restoreUrl();

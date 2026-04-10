@@ -1,4 +1,4 @@
-// GitDisguise — Options page script
+// SFWX — Options page script
 (function () {
   const DEFAULTS = { orgName: "dev", repoName: "backend", branchName: "dev" };
 

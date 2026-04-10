@@ -1,4 +1,4 @@
-// GitDisguise — Popup script
+// SFWX — Popup script
 (function () {
   const toggleBtn = document.getElementById("toggleBtn");
   const statusDot = document.getElementById("statusDot");
@@ -63,7 +63,7 @@
         const active = response && response.active;
         updateUI(active);
         // Persist state
-        chrome.storage.local.set({ gitDisguiseActive: active });
+        chrome.storage.local.set({ sfwxActive: active });
       });
     });
   });

@@ -1,4 +1,4 @@
-# GitDisguise
+# SFWX
 
 **Safe For Work X** — a Chrome extension that makes Twitter/X look like a GitHub commit history.
 
@@ -8,7 +8,7 @@ Your boss walks by. You're doom-scrolling. Panic sets in. But wait — all they 
 
 ## What is this?
 
-GitDisguise overlays a pixel-perfect GitHub dark-theme UI on top of Twitter/X. Tweets become commits. Threads become PR conversations. Your timeline becomes a commit history. Nobody within a 3-meter radius will suspect a thing.
+SFWX overlays a pixel-perfect GitHub dark-theme UI on top of Twitter/X. Tweets become commits. Threads become PR conversations. Your timeline becomes a commit history. Nobody within a 3-meter radius will suspect a thing.
 
 Twitter's DOM stays alive underneath (invisible, doing its infinite-scroll thing), while our overlay extracts tweet data and renders it as GitHub commits. It's like putting a fake book cover on your novel during a meeting, except the book cover is an entire functioning GitHub page.
 
@@ -22,7 +22,7 @@ Since this isn't on the Chrome Web Store (Google might have questions), you'll n
 4. Click **Load unpacked**
 5. Select the folder containing this extension
 6. Navigate to twitter.com or x.com
-7. Click the GitDisguise icon in your toolbar and hit **Enable Disguise**
+7. Click the SFWX icon in your toolbar and hit **Enable Disguise**
 8. Look productive
 
 ## Features

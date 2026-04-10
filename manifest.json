@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "GitDisguise",
+  "name": "SFWX",
   "version": "4.0.0",
   "description": "Makes Twitter/X look like a GitHub commit history",
   "permissions": ["activeTab", "storage"],

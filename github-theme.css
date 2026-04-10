@@ -1,5 +1,5 @@
 /* ============================================================
-   GitDisguise — GitHub Dark Theme CSS (Overlay Architecture)
+   SFWX — GitHub Dark Theme CSS (Overlay Architecture)
 
    This CSS only styles OUR overlay elements.
    No Twitter overrides needed — Twitter is simply hidden.
@@ -28,12 +28,12 @@
    ========================================================= */
 /* Keep Twitter in the document flow so its scroll/virtualization works,
    but make it invisible and non-interactive beneath our overlay. */
-body.gitdisguise-active #react-root {
+body.sfwx-active #react-root {
   visibility: hidden !important;
   pointer-events: none !important;
 }
 
-body.gitdisguise-active {
+body.sfwx-active {
   background-color: var(--gh-bg) !important;
 }
 
