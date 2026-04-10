@@ -226,3 +226,211 @@ body.gitdisguise-active {
   min-width: 20px;
   text-align: center;
 }
+
+/* =========================================================
+   5. CONTENT AREA
+   ========================================================= */
+.gh-content {
+  max-width: 1012px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+/* =========================================================
+   6. COMMITS HEADER (title + filters)
+   ========================================================= */
+.gh-commits-header {
+  padding: 24px 0 0;
+}
+
+.gh-commits-title {
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--gh-text);
+  margin-bottom: 16px;
+}
+
+.gh-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 8px;
+}
+
+.gh-branch-selector svg { width: 16px; height: 16px; fill: currentColor; }
+.gh-branch-name { font-weight: 600; }
+.gh-dropdown-arrow { font-size: 10px; color: var(--gh-text-muted); }
+
+.gh-filter-buttons { display: flex; gap: 8px; }
+
+.gh-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gh-btn-bg);
+  border: 1px solid var(--gh-btn-border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 14px;
+  color: var(--gh-text);
+  cursor: default;
+}
+.gh-filter-btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+/* =========================================================
+   7. DATE CARD + COMMIT ROW
+   ========================================================= */
+.gh-date-card {
+  border: 1px solid var(--gh-border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.gh-commit-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--gh-border);
+  gap: 16px;
+}
+.gh-date-card .gh-commit-row:last-child {
+  border-bottom: none;
+}
+.gh-commit-row:hover {
+  background-color: var(--gh-hover-bg);
+}
+
+/* Left side: identicon + text */
+.gh-commit-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0; /* allow truncation */
+}
+
+/* Identicon */
+.gh-identicon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.gh-identicon svg { display: block; }
+
+/* Text block */
+.gh-commit-text-block {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Commit message row (message text + optional bubble) */
+.gh-commit-msg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gh-commit-message {
+  color: var(--gh-white);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  min-width: 0;
+}
+.gh-commit-message.gh-msg-expanded {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.gh-commit-bubble {
+  flex-shrink: 0;
+  color: var(--gh-text-muted);
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+.gh-commit-bubble svg { width: 16px; height: 16px; }
+.gh-commit-bubble:hover { color: var(--gh-text-link); }
+
+/* Author line */
+.gh-commit-author-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--gh-text-muted);
+  margin-top: 2px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gh-author-name { color: var(--gh-text); font-weight: 400; }
+.gh-committed-text { color: var(--gh-text-muted); }
+
+.gh-ci-status {
+  color: var(--gh-green);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+.gh-ci-status svg { width: 12px; height: 12px; fill: var(--gh-green); }
+
+/* Right side: badges + hash + buttons */
+.gh-commit-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.gh-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--gh-green-muted);
+  border-radius: 12px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--gh-green);
+  line-height: 22px;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.gh-commit-hash {
+  font-family: var(--gh-font-mono);
+  font-size: 12px;
+  color: var(--gh-text-muted);
+  cursor: default;
+  white-space: nowrap;
+}
+.gh-commit-hash:hover { color: var(--gh-text-link); text-decoration: underline; }
+
+.gh-copy-btn, .gh-browse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  border: 1px solid var(--gh-btn-border);
+  border-radius: 6px;
+  background: var(--gh-btn-bg);
+  cursor: default;
+  color: var(--gh-text-muted);
+}
+.gh-copy-btn svg, .gh-browse-btn svg { width: 14px; height: 14px; fill: currentColor; }
+.gh-copy-btn:hover, .gh-browse-btn:hover { background: var(--gh-border); color: var(--gh-text); }

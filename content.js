@@ -572,6 +572,209 @@
     return overlay;
   }
 
+  // ================================================================
+  // Render a single commit row
+  // ================================================================
+  let rowCounter = 0;
+  let currentDateCard = null; // the bordered card for the current date group
+
+  function renderCommitRow(tweet) {
+    const seed = rowCounter++;
+    const hash = generateHash(tweet.text + seed);
+    const hasVerified = seededRandom(seed * 7) > VERIFIED_THRESHOLD;
+    const hasCI = seededRandom(seed * 13) > CI_THRESHOLD;
+    const hasBubble = seededRandom(seed * 19) > 0.55; // ~45% chance of speech bubble
+    const isAuthored = seededRandom(seed * 23) > 0.6; // ~40% say "authored" vs "committed"
+    const ciTotal = Math.floor(seededRandom(seed * 17) * 3) + 2;
+    const timeStr = relativeTime(tweet.datetime);
+    const identiconSeed = tweet.authorName.charCodeAt(0) * 100 + (tweet.authorName.charCodeAt(1) || 0);
+
+    // Date separator + grouped card
+    const dl = dateLabel(tweet.datetime);
+    if (dl && dl !== lastRenderedDateGroup) {
+      lastRenderedDateGroup = dl;
+      const sep = document.createElement("div");
+      sep.className = "gh-date-separator";
+      sep.innerHTML = `${ICONS.commit} Commits on ${esc(dl)}`;
+      commitListEl.appendChild(sep);
+
+      // Start a new bordered card for this date group
+      currentDateCard = document.createElement("div");
+      currentDateCard.className = "gh-date-card";
+      commitListEl.appendChild(currentDateCard);
+    }
+
+    // If no card yet (e.g. no date), create one
+    if (!currentDateCard) {
+      currentDateCard = document.createElement("div");
+      currentDateCard.className = "gh-date-card";
+      commitListEl.appendChild(currentDateCard);
+    }
+
+    // Row container
+    const row = document.createElement("div");
+    row.className = "gh-commit-row";
+
+    // Left side: identicon + text block
+    const leftSide = document.createElement("div");
+    leftSide.className = "gh-commit-left";
+
+    // Identicon
+    const identicon = document.createElement("div");
+    identicon.className = "gh-identicon";
+    identicon.innerHTML = generateIdenticonSVG(identiconSeed);
+    identicon.title = "Click to reveal profile photo";
+
+    // Identicon click → reveal real avatar
+    let revealTimer = null;
+    identicon.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      if (revealTimer || !tweet.avatarUrl) return;
+      identicon.style.transition = "transform 0.3s ease";
+      identicon.style.transform = "rotateY(90deg)";
+      setTimeout(() => {
+        identicon.innerHTML = `<img src="${tweet.avatarUrl}" style="width:20px;height:20px;border-radius:50%;display:block;" />`;
+        identicon.style.transform = "rotateY(0deg)";
+      }, IDENTICON_FLIP_MS);
+      revealTimer = setTimeout(() => {
+        identicon.style.transform = "rotateY(90deg)";
+        setTimeout(() => {
+          identicon.innerHTML = generateIdenticonSVG(identiconSeed);
+          identicon.style.transform = "rotateY(0deg)";
+          revealTimer = null;
+        }, IDENTICON_FLIP_MS);
+      }, IDENTICON_REVEAL_MS);
+    });
+
+    // Text block
+    const textBlock = document.createElement("div");
+    textBlock.className = "gh-commit-text-block";
+
+    const msgLine = document.createElement("div");
+    msgLine.className = "gh-commit-msg-row";
+
+    const msgText = document.createElement("span");
+    msgText.className = "gh-commit-message";
+    msgText.textContent = tweet.text;
+    msgLine.appendChild(msgText);
+
+    // Speech bubble icon (~45% of rows)
+    if (hasBubble) {
+      const bubble = document.createElement("span");
+      bubble.className = "gh-commit-bubble";
+      bubble.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 2.75a.25.25 0 01.25-.25h12.5a.25.25 0 01.25.25v8.5a.25.25 0 01-.25.25h-6.5a.75.75 0 00-.53.22L4.5 14.44v-2.19a.75.75 0 00-.75-.75h-2a.25.25 0 01-.25-.25v-8.5z"/></svg>`;
+      bubble.title = "View commit details";
+      msgLine.appendChild(bubble);
+    }
+
+    // Click to expand/collapse if text is truncated
+    msgText.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!msgText.classList.contains("gh-msg-expanded") && msgText.scrollWidth <= msgText.clientWidth) return;
+      msgText.classList.toggle("gh-msg-expanded");
+    });
+
+    const authorLine = document.createElement("div");
+    authorLine.className = "gh-commit-author-line";
+    const verb = isAuthored ? "authored" : "committed";
+    let ciHTML = hasCI ? ` <span class="gh-ci-status">${ICONS.check} ${ciTotal} / ${ciTotal}</span>` : "";
+    authorLine.innerHTML = `<span class="gh-author-name">${esc(tweet.authorName)}</span> <span class="gh-committed-text">${verb} ${esc(timeStr)}</span>${ciHTML}`;
+
+    textBlock.appendChild(msgLine);
+    textBlock.appendChild(authorLine);
+
+    // Media toggle (if tweet has media)
+    if (tweet.mediaUrls.length > 0) {
+      const mediaWrapper = document.createElement("div");
+      mediaWrapper.className = "gh-media-wrapper";
+      const toggle = document.createElement("div");
+      toggle.className = "gh-media-toggle";
+      toggle.innerHTML = ICONS.expand;
+      const collapsible = document.createElement("div");
+      collapsible.className = "gh-media-collapsible";
+
+      tweet.mediaUrls.forEach(m => {
+        const img = document.createElement("img");
+        img.src = m.src;
+        img.className = "gh-media-img";
+        collapsible.appendChild(img);
+      });
+
+      let expanded = false;
+      toggle.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        expanded = !expanded;
+        if (expanded) {
+          collapsible.style.maxHeight = collapsible.scrollHeight + "px";
+          collapsible.classList.add("gh-expanded");
+          toggle.querySelector("svg").style.transform = "rotate(-90deg)";
+        } else {
+          collapsible.style.maxHeight = collapsible.scrollHeight + "px";
+          collapsible.offsetHeight; // reflow
+          collapsible.style.maxHeight = "0";
+          collapsible.classList.remove("gh-expanded");
+          toggle.querySelector("svg").style.transform = "";
+        }
+      });
+
+      mediaWrapper.appendChild(toggle);
+      mediaWrapper.appendChild(collapsible);
+      textBlock.appendChild(mediaWrapper);
+    }
+
+    leftSide.appendChild(identicon);
+    leftSide.appendChild(textBlock);
+
+    // Right side: verified + hash + buttons
+    const rightSide = document.createElement("div");
+    rightSide.className = "gh-commit-right";
+    const verifiedHTML = hasVerified ? `<span class="gh-verified-badge">Verified</span>` : "";
+    rightSide.innerHTML = `${verifiedHTML}<span class="gh-commit-hash">${hash}</span><span class="gh-copy-btn" title="Copy commit link">${ICONS.copy}</span><span class="gh-browse-btn" title="Browse the repository at this point in the history">${ICONS.code}</span>`;
+
+    // Wire up copy button → copy tweet link + toast
+    const copyBtn = rightSide.querySelector(".gh-copy-btn");
+    if (copyBtn) {
+      copyBtn.style.cursor = "pointer";
+      copyBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const url = tweet.tweetUrl || "https://x.com";
+        navigator.clipboard.writeText(url).then(() => {
+          showToast('"commit" copied to clipboard');
+        });
+      });
+    }
+
+    // Wire up browse button → navigate to commit detail (PR conversation view)
+    const browseBtn = rightSide.querySelector(".gh-browse-btn");
+    if (browseBtn) {
+      browseBtn.style.cursor = "pointer";
+      browseBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!tweet.tweetUrl) return;
+        // Store commit detail data for the detail page to pick up
+        chrome.storage.local.set({
+          commitDetail: {
+            text: tweet.text,
+            authorName: tweet.authorName,
+            authorHandle: tweet.authorHandle,
+            avatarUrl: tweet.avatarUrl,
+            datetime: tweet.datetime,
+            hash: hash,
+            tweetUrl: tweet.tweetUrl,
+            mediaUrls: tweet.mediaUrls,
+          }
+        }, () => {
+          // Navigate to the tweet page (content script will re-activate in detail mode)
+          location.href = tweet.tweetUrl;
+        });
+      });
+    }
+
+    row.appendChild(leftSide);
+    row.appendChild(rightSide);
+    currentDateCard.appendChild(row);
+  }
+
   // Helper functions (stub implementations for now)
   function switchTwitterTab(tabName) {
     // Will be implemented in commit 10
@@ -580,6 +783,8 @@
   function clearCommitList() {
     if (commitListEl) commitListEl.innerHTML = "";
     lastRenderedDateGroup = null;
+    currentDateCard = null;
+    rowCounter = 0;
   }
 
   function triggerRefresh() {
